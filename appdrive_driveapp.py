@@ -2,13 +2,18 @@ import re
 import requests
 from lxml import etree
 
-url = "" # appdrive url
+url = "" # appdrive/driveapp url
 
 MD = "" # md cookie
-PHPSESSID = "" # phpsessid cookie
 
 '''
 NOTE: Auto-detection for non-login urls, and indicated via 'link_type' (direct/login) in output.
+
+SUPPORTED DOMAINS:
+appdrive.in
+driveapp.in
+
+(Same MD cookie won't work for both domains)
 '''
 
 # ===================================================================
@@ -32,10 +37,7 @@ def parse_info(data):
 def appdrive_dl(url):
     client = requests.Session()
     
-    client.cookies.update({
-        'MD': MD,
-        'PHPSESSID': PHPSESSID
-    })
+    client.cookies.update({'MD': MD})
 
     res = client.get(url)
     key = re.findall('"key",\s+"(.*?)"', res.text)[0]
@@ -48,14 +50,14 @@ def appdrive_dl(url):
     
     headers = {
         "Content-Type": f"multipart/form-data; boundary={'-'*4}_",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36"
     }
     
     data = {
         'type': 1,
-        'key': key
+        'key': key,
+        'action': 'original'
     }
-    
-    data['action'] = 'original'
     
     if len(ddl_btn):
         info_parsed['link_type'] = 'direct'
@@ -65,8 +67,7 @@ def appdrive_dl(url):
         try:
             response = client.post(url, data=gen_payload(data), headers=headers).json()
             break
-        except:
-            data['type'] += 1
+        except: data['type'] += 1
 
     if 'url' in response:
         info_parsed['gdrive_link'] = response['url']
@@ -74,6 +75,11 @@ def appdrive_dl(url):
     elif 'error' in response and response['error']:
         info_parsed['error'] = True
         info_parsed['error_message'] = response['message']
+    
+    if 'driveapp.in' in url and not info_parsed['error']:
+        res = client.get(info_parsed['gdrive_link'])
+        drive_link = etree.HTML(res.content).xpath("//a[contains(@class,'btn')]/@href")[0]
+        info_parsed['gdrive_link'] = drive_link
         
     info_parsed['src_url'] = url
     
